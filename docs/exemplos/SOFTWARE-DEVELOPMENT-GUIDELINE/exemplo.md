@@ -1,0 +1,1 @@
+https://github.com/devfullcycle/claude-mkt-place/blob/main/plugins/development-guidelines/commands/guidelines-generate.md
