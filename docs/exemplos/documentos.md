@@ -36,3 +36,8 @@ Classificação de documentos
 | **CI/CD Documentation** | **Infraestrutura** | Mantém rastreabilidade dos pipelines e deploys. Muitas vezes integrada ao código. |
 
 # Documentos com relevância menor ou herança Waterfall (RUP, processos antigos)
+
+
+# Plugins disponíveis
+
+https://github.com/devfullcycle/claude-mkt-place/tree/main
