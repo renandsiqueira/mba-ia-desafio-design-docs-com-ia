@@ -45,8 +45,8 @@ Cenários de uso chave
 | Objetivo                                                               | Métrica                                                         | Meta                      |
 | ---------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------- |
 | Notificar o cliente em tempo real sobre mudanças de status de pedido | Latência entre o commit da mudança de status e a entrega bem sucedida do webhook (primeira tentativa) | Abaixo de 10 segundos |
-| Cobrir indisponibilidades temporárias do endpoint do cliente sem intervenção manual | Janela de retry automático entre a primeira falha e a última tentativa | Cerca de 15 horas (5 tentativas: 1m, 5m, 30m, 2h, 12h) |
-| Não perder notificações de mudança de status | Eventos que não terminam nem entregues nem registrados na DLQ | Zero |
+| Eliminar a necessidade de polling no GET /orders pelos clientes integrados | Clientes integrados que dependem do GET /orders para detectar mudança de status | Nenhum, após a adoção dos webhooks |
+| Reter os clientes B2B que solicitaram a feature | Clientes entre Atlas Comercial, MaxDistribuição e Nova Cargo que adotam a integração por webhooks | Os três clientes |
 
 ---
 
