@@ -1,4 +1,4 @@
-### PRD: Plataforma de Pedidos Webhooks de Notificação de Pedidos
+### PRD: Order Management System (OMS) Webhooks de Notificação de Pedidos
 
 Versão: 0.1 (rascunho)
 Data: 2026-11-17
@@ -11,7 +11,7 @@ Responsável: Larissa (Tech Lead)
 Os clientes B2B da plataforma hoje descobrem mudanças de status dos seus pedidos fazendo polling periódico no GET /orders, o que torna a integração lenta e cara para eles. Esta feature cria um sistema de webhooks outbound: sempre que o status de um pedido muda, a plataforma notifica automaticamente os endpoints cadastrados pelo cliente, em menos de 10 segundos, com payload assinado via HMAC-SHA256. A entrega é assíncrona (padrão outbox no MySQL e worker em processo separado), com retry, fila de falhas (DLQ) e reprocessamento manual por administradores.
 
 Onde essa feature será implantada
-- Sistema existente: a API de pedidos atual (Node.js, Prisma, MySQL). A feature entra como um novo módulo em src/modules/webhooks, seguindo o padrão de módulos do projeto, mais uma nova entry point de worker (src/worker.ts) rodando como processo separado da API e conectada ao mesmo banco.
+- Sistema existente: o Order Management System (order-management-api, em Node.js, TypeScript, Express, Prisma e MySQL), que hoje não tem nenhum mecanismo de notificação externa, eventos ou filas. A feature entra como um novo módulo em src/modules/webhooks, seguindo o padrão de módulos do projeto, mais uma nova entry point de worker (src/worker.ts) rodando como processo separado da API e conectada ao mesmo banco.
 
 ---
 
@@ -45,8 +45,8 @@ Cenários de uso chave
 | Objetivo                                                               | Métrica                                                         | Meta                      |
 | ---------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------- |
 | Notificar o cliente em tempo real sobre mudanças de status de pedido | Latência entre o commit da mudança de status e a entrega bem sucedida do webhook (primeira tentativa) | Abaixo de 10 segundos |
-| Eliminar a necessidade de polling no GET /orders pelos clientes integrados | Volume de requisições GET /orders feitas pelos clientes B2B que ativaram webhooks | Redução significativa após adoção (hipótese: meta numérica não definida na reunião) |
-| Não perder notificações quando o cliente estiver temporariamente indisponível | Percentual de eventos entregues com sucesso dentro da janela de retry (cerca de 15 horas) | 100% dos eventos entregues ou registrados na DLQ, sem perda silenciosa |
+| Eliminar a necessidade de polling no GET /orders pelos clientes integrados | Clientes integrados que dependem do GET /orders para detectar mudança de status | Nenhum, após a adoção dos webhooks |
+| Reter os clientes B2B que solicitaram a feature | Clientes entre Atlas Comercial, MaxDistribuição e Nova Cargo que adotam a integração por webhooks | Os três clientes |
 
 ---
 
@@ -79,18 +79,19 @@ O sistema deve permitir que um usuário autenticado cadastre um endpoint de webh
 
 **Fluxo principal**
 - Usuário autenticado envia POST com customer_id (no body ou no path), url e lista de status desejados.
-- Sistema valida o payload com schema Zod, incluindo URL obrigatoriamente HTTPS.
-- Sistema gera uma secret única para o endpoint e persiste a configuração (url, secret, customer_id, status filtrados, estado ativo) com id UUID.
-- Sistema retorna a configuração criada junto com a secret.
+- Sistema valida o payload com schema Zod, incluindo URL obrigatoriamente HTTPS e status restritos aos valores do enum OrderStatus (PENDING, PAID, PROCESSING, SHIPPED, DELIVERED, CANCELLED).
+- Sistema confirma que o customer existe e gera uma secret única para o endpoint.
+- Sistema persiste a configuração (url, secret, customer_id, status filtrados, estado ativo) com id UUID e a retorna junto com a secret.
 
 **Fluxos alternativos e exceções**
-- Lista de status vazia ou ausente: requisição recusada por validação (hipótese: comportamento não discutido na reunião).
-- O customer_id não vem do JWT, porque o JWT representa o usuário operador e não o cliente.
+- O customer_id não vem do JWT: o token carrega apenas id, email e role do usuário (ADMIN ou OPERATOR), e não existe vínculo entre usuário e customer no modelo de dados atual.
 
 **Erros previstos**
 - WEBHOOK_INVALID_URL: URL ausente, malformada ou com esquema http.
-- WEBHOOK_NOT_FOUND: customer_id informado não existe (hipótese de uso do código para este caso).
-- Erro de validação Zod para campos obrigatórios ausentes, tratado pelo error middleware existente.
+- NOT_FOUND: customer inexistente, reutilizando o NotFoundError('Customer'), como já faz a criação de pedidos.
+- VALIDATION_ERROR: demais falhas de schema, tratadas pelo validate middleware e pelo error middleware existentes.
+
+Observação: hoje o validate middleware converte toda falha de schema Zod em VALIDATION_ERROR, então emitir WEBHOOK_INVALID_URL exige uma checagem específica para a URL; o FDD deve definir onde essa checagem fica.
 
 **Prioridade:** alta
 
@@ -102,7 +103,7 @@ O sistema deve permitir alterar a URL, a lista de status filtrados e o estado at
 **Fluxo principal**
 - Usuário autenticado envia PATCH para o webhook com os campos a alterar.
 - Sistema valida os campos com schema Zod, incluindo a regra de URL HTTPS.
-- Sistema persiste as alterações e retorna a configuração atualizada, sem expor novamente a secret.
+- Sistema persiste as alterações e retorna a configuração atualizada.
 
 **Fluxos alternativos e exceções**
 - Desativar o webhook (estado ativo falso) faz com que novos eventos deixem de ser inseridos na outbox para ele.
@@ -123,7 +124,7 @@ O sistema deve permitir remover a configuração de um webhook de um cliente.
 - Sistema remove a configuração e deixa de gerar eventos para esse endpoint.
 
 **Fluxos alternativos e exceções**
-- Eventos já presentes na outbox para esse webhook no momento da remoção: tratamento não definido na reunião (hipótese: são descartados sem envio).
+- Nenhum fluxo alternativo foi definido na reunião.
 
 **Erros previstos**
 - WEBHOOK_NOT_FOUND: webhook inexistente.
@@ -137,13 +138,13 @@ O sistema deve listar todas as configurações de webhook de um customer.
 
 **Fluxo principal**
 - Usuário autenticado envia GET informando o customer.
-- Sistema retorna a lista de webhooks com url, status filtrados e estado ativo, sem expor as secrets.
+- Sistema retorna a lista de webhooks com url, status filtrados e estado ativo, no formato paginado padrão da API (data e pagination).
 
 **Fluxos alternativos e exceções**
 - Customer sem webhooks cadastrados: retorna lista vazia.
 
 **Erros previstos**
-- WEBHOOK_NOT_FOUND: customer inexistente (hipótese de uso do código para este caso).
+- NOT_FOUND: customer inexistente, reutilizando o NotFoundError('Customer').
 
 **Prioridade:** alta
 
@@ -160,11 +161,13 @@ Toda mudança de status de pedido deve registrar o evento de webhook na tabela w
 
 **Fluxos alternativos e exceções**
 - Nenhum webhook do customer quer aquele status: nenhuma linha é inserida na outbox.
+- A mudança de status é recusada antes de chegar à outbox (InvalidStatusTransitionError, ConflictError por status repetido ou InsufficientStockError no débito de estoque): a transação sofre rollback e nenhum evento é gerado.
+- A criação do pedido (status inicial PENDING) acontece em OrderService.create, fora do changeStatus, e por isso não dispara webhook.
 - Payload renderizado acima de 64KB: o evento não é enviado e gera erro, sem truncamento.
 
 **Erros previstos**
 - Falha ao inserir na outbox causa rollback de toda a transação de mudança de status; não pode existir status alterado sem evento registrado.
-- Payload acima de 64KB gera erro explícito (hipótese de nome: WEBHOOK_PAYLOAD_TOO_LARGE).
+- Payload acima de 64KB gera erro explícito, com código de prefixo WEBHOOK_ a definir no FDD.
 
 **Prioridade:** alta
 
@@ -214,7 +217,7 @@ Um administrador deve conseguir reenviar manualmente um evento que está na DLQ.
 
 **Fluxo principal**
 - Usuário com role ADMIN envia POST /admin/webhooks/dead-letter/:id/replay.
-- Sistema valida a role usando o requireRole existente.
+- Sistema valida a role com o requireRole('ADMIN') existente, no mesmo formato já usado na rota de usuários.
 - Sistema recoloca o evento na outbox com status pendente para ser processado pelo worker.
 - Sistema registra em log de auditoria quem executou o replay e quando.
 
@@ -223,7 +226,8 @@ Um administrador deve conseguir reenviar manualmente um evento que está na DLQ.
 
 **Erros previstos**
 - WEBHOOK_NOT_FOUND: id inexistente na DLQ.
-- Acesso negado para usuário sem role ADMIN, tratado pelo requireRole existente.
+- FORBIDDEN (HTTP 403): usuário sem role ADMIN, erro já emitido pelo requireRole.
+- UNAUTHORIZED (HTTP 401): requisição sem token válido, erro já emitido pelo authenticate.
 
 **Prioridade:** alta
 
@@ -252,15 +256,14 @@ O cliente deve conseguir solicitar uma nova secret pela API, com a secret anteri
 **Fluxo principal**
 - Usuário autenticado solicita a rotação da secret de um webhook.
 - Sistema gera uma nova secret única e a retorna.
-- Durante 24 horas a secret anterior continua válida em paralelo, para o cliente migrar seus sistemas (hipótese: durante esse período a assinatura passa a ser feita com a nova secret e o cliente aceita ambas na verificação; o mecanismo exato não foi detalhado na reunião).
+- Durante 24 horas a secret anterior continua válida em paralelo, para o cliente migrar seus sistemas.
 - Após 24 horas a secret anterior é invalidada.
 
 **Fluxos alternativos e exceções**
-- Nova rotação solicitada dentro do grace period: comportamento não definido na reunião (hipótese: a secret mais antiga é invalidada imediatamente).
+- Nenhum fluxo alternativo foi definido na reunião; o mecanismo de assinatura durante o grace period fica para o FDD.
 
 **Erros previstos**
 - WEBHOOK_NOT_FOUND: webhook inexistente.
-- WEBHOOK_SECRET_REQUIRED: tentativa de operação de assinatura sem secret válida associada ao webhook.
 
 **Prioridade:** media
 
@@ -275,8 +278,9 @@ Performance
 - Worker lê a outbox em lotes pequenos, apoiado em índices nos campos status e created_at.
 
 Disponibilidade
-- 99.9% de disponibilidade mensal do serviço de envio de webhooks, por ser voltado a clientes externos (hipótese: não definido na reunião).
 - Worker roda como processo separado da API, para que reinícios da API não interrompam o processamento.
+- Indisponibilidade do endpoint do cliente não afeta a API: a falha fica isolada no worker e é absorvida pelo retry.
+- Nenhuma meta numérica de disponibilidade (SLA) foi definida na reunião.
 
 Segurança e autorização
 - Assinatura HMAC-SHA256 sobre o corpo da requisição, enviada no header X-Signature.
@@ -288,9 +292,10 @@ Segurança e autorização
 - Limite de 64KB para o payload, com erro em caso de excesso.
 
 Observabilidade
-- Logs estruturados com o Pino já usado no projeto, sem introduzir novas bibliotecas.
+- Logs estruturados com o logger Pino já usado no projeto (timestamp ISO e redaction de campos sensíveis), sem introduzir novas bibliotecas.
+- Requisições à API de webhooks já recebem requestId e tempo de resposta pelo request logger existente.
 - Histórico de cada tentativa de entrega com resultado, resposta e tempo de resposta.
-- Métricas de profundidade da outbox, taxa de falha de entrega e volume da DLQ (hipótese: não definido na reunião).
+- O projeto não tem hoje biblioteca de métricas nem de tracing; a reunião não definiu nenhuma, e a definição fica para o FDD.
 
 Confiabilidade e integridade de dados
 - Inserção na outbox atômica com a mudança de status: se a transação principal sofrer rollback, o evento também é descartado.
@@ -302,6 +307,7 @@ Confiabilidade e integridade de dados
 Compatibilidade e portabilidade
 - Payload JSON com event_id, event_type (order.status_changed), timestamp ISO 8601, order_id, order_number, from_status, to_status, customer_id e campos básicos do pedido como total_cents, sem os itens do pedido.
 - Mesmo banco MySQL e mesma stack (Node.js, Prisma) da API existente; worker com instância própria de PrismaClient.
+- Os endpoints citados na reunião (ex: GET /webhooks/:id/deliveries e POST /admin/webhooks/dead-letter/:id/replay) ficam sob o prefixo /api/v1 que a API já usa.
 - Identificadores em UUID, seguindo o padrão do restante do projeto.
 
 Compliance
@@ -397,6 +403,7 @@ A feature depende de alterar o método changeStatus para chamar publishWebhookEv
   - Secret única por endpoint, nunca global.
   - Endpoint de rotação de secret com grace period de 24 horas.
   - Revisão de segurança dedicada do HMAC e da geração de secret antes do deploy.
+  - Incluir o campo de secret na redaction do logger Pino, que hoje cobre apenas authorization, cookie, password, passwordHash, token e accessToken.
 - **Plano de contingência:** cliente rotaciona a secret imediatamente e a antiga expira ao fim do grace period.
 
 #### Indisponibilidade prolongada do endpoint do cliente
@@ -431,6 +438,14 @@ A feature depende de alterar o método changeStatus para chamar publishWebhookEv
   - Registrar a limitação como conhecida e documentá-la.
 - **Plano de contingência:** antes de escalar, particionar o processamento por order_id ou usar lock pessimista.
 
+#### Qualquer usuário autenticado consegue gerenciar webhooks de qualquer cliente
+- **Probabilidade:** media
+- **Impacto:** um operador pode cadastrar, alterar ou remover webhooks de outro customer e ler o histórico de entregas com payloads de pedidos, porque o modelo de dados atual não liga usuário a customer e a autorização do CRUD aceita qualquer role autenticada.
+- **Mitigação:**
+  - Manter o customer_id explícito em toda operação e validar sua existência.
+  - Registrar em log quem executou cada operação de configuração.
+- **Plano de contingência:** endurecer a autorização do CRUD numa fase seguinte, como a própria reunião previu.
+
 ---
 
 ### Critérios de aceitação
@@ -455,10 +470,11 @@ Checklist objetivo que define se a feature está pronta.
 ### Testes e validação
 
 Tipos de teste obrigatórios
-- Testes unitários de publishWebhookEvent, do filtro de status, da geração da assinatura HMAC-SHA256 e do cálculo da progressão de backoff.
-- Testes de integração do fluxo completo: changeStatus, inserção na outbox, processamento pelo worker e entrega a um endpoint simulado, incluindo rollback quando a outbox falha.
+- Testes de integração dos endpoints de webhook, no mesmo padrão dos testes atuais (Vitest e Supertest contra a API, com MySQL real).
+- Testes ponta a ponta da integração com o order.service: changeStatus, inserção na outbox, processamento pelo worker e entrega a um endpoint simulado, incluindo o rollback quando a outbox falha.
 - Testes de resiliência com endpoint simulado lento (timeout de 10 segundos) e indisponível, cobrindo retry, DLQ e replay.
-- Testes de segurança: rejeição de URL http, validação da assinatura, grace period da rotação de secret e bloqueio do replay para usuários sem role ADMIN.
+- Testes de segurança: rejeição de URL http, validação da assinatura HMAC-SHA256, grace period da rotação de secret e bloqueio do replay para usuários sem role ADMIN.
 
 Estratégia de validação
-- TDD para a lógica crítica de outbox, assinatura e retry; testes de integração ponta a ponta na integração com o order.service; revisão de segurança da Sofia antes do deploy; e validação guiada com um dos clientes piloto (hipótese: não definido na reunião).
+- Testes automatizados de integração e ponta a ponta, com o setup de testes estendido para limpar as novas tabelas entre os casos, como já é feito com pedidos e clientes.
+- Revisão de segurança da Sofia antes do deploy, com pelo menos dois dias úteis, focada em HMAC e na geração e rotação de secret.
