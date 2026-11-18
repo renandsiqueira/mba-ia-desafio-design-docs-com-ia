@@ -21,6 +21,30 @@ Antes de gerar o PRD final, confirme que:
 Se alguma checagem falhar, volte e pergunte o que falta antes de renderizar
 o documento final — não preencha lacunas de requisitos reais sem perguntar.
 
+## Checagens mínimas quando o PRD vem de uma transcrição de reunião
+
+Estas checagens adicionais só valem quando a entrevista partiu de um arquivo
+de contexto (`contexto=`) que é uma transcrição de reunião ou notas de
+descoberta formais — ou seja, quando plausivelmente existe profundidade
+suficiente no material de origem para extrair vários itens distintos. Para
+uma entrevista do zero sobre uma feature pequena (sem `contexto=`), não
+aplique estes mínimos artificialmente: é melhor um PRD com poucos itens
+reais do que um PRD com itens inventados só para bater uma contagem.
+
+Quando aplicável, antes de finalizar confirme que o PRD reúne:
+
+- Pelo menos 8 requisitos funcionais distintos extraídos da transcrição.
+- Pelo menos 2 itens na seção "Fora de escopo" explicitamente descartados
+  ou adiados durante a reunião (não apenas inferidos).
+- Pelo menos 2 riscos na seção "Riscos e mitigação".
+
+Se a transcrição claramente não sustenta esses mínimos (reunião curta,
+poucos requisitos discutidos), não invente itens para completar a
+contagem. Em vez disso, avise o usuário explicitamente que o mínimo não foi
+atingido, releia a transcrição em busca de requisitos/riscos/itens de
+escopo que possam ter passado despercebidos, e só então pergunte ao usuário
+como prosseguir se ainda faltar.
+
 ## Defaults inteligentes
 
 Use defaults apenas se o usuário não souber responder. Marque explicitamente

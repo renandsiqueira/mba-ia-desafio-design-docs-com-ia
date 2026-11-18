@@ -109,6 +109,13 @@ checagem falhar, volte e pergunte o que falta — não preencha lacunas de
 conteúdo real sozinho, apenas os defaults explicitamente marcados como
 hipótese.
 
+Quando a entrada incluir `contexto=` (uma transcrição de reunião ou notas
+de descoberta formais), aplique também as "Checagens mínimas quando o PRD
+vem de uma transcrição de reunião" do mesmo arquivo — elas cobrem volume
+mínimo de requisitos funcionais, riscos e itens fora de escopo. Essas
+checagens de volume não se aplicam a uma entrevista do zero sem arquivo de
+contexto.
+
 ## Estrutura de dados interna
 
 Durante a entrevista, mantenha as informações organizadas mentalmente (ou em

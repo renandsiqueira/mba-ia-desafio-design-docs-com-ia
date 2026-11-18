@@ -13,13 +13,24 @@ Responsável: [responsavel_prd]
 
 ---
 
-### Resumo
+### Resumo e contexto
 
 [contexto.resumo]
 
+Onde essa feature será implantada
+- [contexto_implantacao.descricao]
+
 ---
 
-### Contexto e problema
+### Problema e motivação
+
+Problemas priorizados
+- [problema 1 com impacto e prioridade]
+- [problema 2 com impacto e prioridade]
+
+---
+
+### Público-alvo e cenários de uso
 
 Público-alvo
 - [público alvo 1]
@@ -28,13 +39,6 @@ Público-alvo
 Cenários de uso chave
 - [cenário 1]
 - [cenário 2]
-
-Onde essa feature será implantada
-- [contexto_implantacao.descricao]
-
-Problemas priorizados
-- [problema 1 com impacto e prioridade]
-- [problema 2 com impacto e prioridade]
 
 ---
 
